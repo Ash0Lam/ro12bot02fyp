@@ -176,4 +176,11 @@ if __name__ == '__main__':
         print(f"[ERROR] 连接到服务器失败: {e}")
 
 if __name__ == '__main__':
-    socketio.run(app, host='0.0.0.0', port=5000)
+    server_ip = '0.0.0.0'  # 修改這裡，不要使用 get_local_ip()
+    print(f"服務器運行於 {server_ip}:5000")
+    socketio.run(app, 
+        host=server_ip, 
+        port=5000,
+        debug=True,
+        allow_unsafe_werkzeug=True  # 添加這個參數
+    )
