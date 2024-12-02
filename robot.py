@@ -174,3 +174,6 @@ if __name__ == '__main__':
         print("[INFO] 程序终止")
     except Exception as e:
         print(f"[ERROR] 连接到服务器失败: {e}")
+
+if __name__ == '__main__':
+    socketio.run(app, host='0.0.0.0', port=5000)
