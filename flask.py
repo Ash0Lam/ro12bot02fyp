@@ -10,7 +10,7 @@ import threading
 sio = socketio.Client()
 
 # 配置参数
-SERVER_URL = 'http://<PC_IP>:5000'  # 替换为 PC 的 IP 地址
+SERVER_URL = 'http://192.168.1.2:5000'  # 替换为 PC 的 IP 地址
 CHUNK = 320  # 每幀數據大小
 FORMAT = pyaudio.paInt16
 CHANNELS = 1
