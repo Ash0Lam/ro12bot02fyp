@@ -5,182 +5,278 @@ import webrtcvad
 import os
 import time
 import threading
+import psutil
+import logging
+from flask import Flask
+from flask_socketio import SocketIO, emit
 
-# WebSocket 客戶端
-sio = socketio.Client()
+# 配置日志
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [%(levelname)s] %(message)s',
+    filename='robot.log',
+    filemode='a'
+)
 
 # 配置参数
-SERVER_URL = 'http://192.168.1.2:5000'  # 替换为 PC 的 IP 地址
-CHUNK = 320  # 每幀數據大小
+PC_SERVER_URL = 'http://192.168.1.30:5000'  # PC 服务器地址
+ROBOT_SERVER_HOST = '0.0.0.0'  # 机器人服务器监听地址
+ROBOT_SERVER_PORT = 6000       # 机器人服务器端口
+
+# 录音参数
+CHUNK = 320
 FORMAT = pyaudio.paInt16
 CHANNELS = 1
 RATE = 16000
-MAX_SILENCE_FRAMES = int(RATE / CHUNK * 3)  # 3 秒靜音停止錄音
-MAX_WAIT_FRAMES = int(RATE / CHUNK * 30)   # 最多等待 30 秒
-OUTPUT_FILE = "robot_recording.wav"
-HEARTBEAT_INTERVAL = 5  # 心跳包发送间隔（秒）
+MAX_SILENCE_FRAMES = int(RATE / CHUNK * 3)  # 3 秒静音停止录音
+MAX_WAIT_FRAMES = int(RATE / CHUNK * 30)    # 最多等待 30 秒
+RECORDING_PATH = "recordings"
+HEARTBEAT_INTERVAL = 5  # 心跳间隔（秒）
 
-# 初始化 PyAudio 和 WebRTC VAD
-vad = webrtcvad.Vad()
-vad.set_mode(2)  # 中等靈敏度
+class RobotClient:
+    def __init__(self):
+        self.sio = socketio.Client()
+        self.recording = False
+        self.connected = False
+        self.setup_socket_events()
+        
+        # 初始化音频设备
+        self.vad = webrtcvad.Vad(2)  # 设置中等灵敏度
+        self.audio = pyaudio.PyAudio()
+        
+        # 确保录音目录存在
+        os.makedirs(RECORDING_PATH, exist_ok=True)
 
+    def setup_socket_events(self):
+        """设置 Socket.IO 事件处理"""
+        @self.sio.on('connect')
+        def on_connect():
+            self.connected = True
+            logging.info("已连接到 PC 服务器")
+            self.sio.emit('robot_connect', {'type': 'robot'})
 
-def start_recording():
-    """录音并上传到服务器"""
-    p = pyaudio.PyAudio()
-    stream = p.open(format=FORMAT, channels=CHANNELS, rate=RATE, input=True, frames_per_buffer=CHUNK)
-    frames = []
-    silence_count = 0
-    has_voice = False
+        @self.sio.on('disconnect')
+        def on_disconnect():
+            self.connected = False
+            logging.info("与 PC 服务器断开连接")
 
-    print("[INFO] 开始录音，等待语音触发...")
+        @self.sio.on('start_recording')
+        def on_start_recording():
+            if not self.recording:
+                threading.Thread(target=self.record_audio).start()
 
-    try:
-        while True:
-            data = stream.read(CHUNK, exception_on_overflow=False)
+        @self.sio.on('stop_recording')
+        def on_stop_recording():
+            self.recording = False
 
-            if vad.is_speech(data, RATE):
-                frames.append(data)
-                silence_count = 0
-                has_voice = True
-                print("[INFO] 检测到语音，录音中...")
-            else:
-                silence_count += 1
+        @self.sio.on('play_audio')
+        def on_play_audio(data):
+            self.play_audio(data['file'])
 
-            if has_voice and silence_count > MAX_SILENCE_FRAMES:
-                print("[INFO] 静音超过 3 秒，结束录音")
-                break
+        @self.sio.on('execute_action')
+        def on_execute_action(data):
+            self.execute_action(data['action'])
 
-            if not has_voice and len(frames) > MAX_WAIT_FRAMES:
-                print("[INFO] 超过 30 秒无语音，结束等待")
-                break
-    finally:
-        stream.stop_stream()
-        stream.close()
-        p.terminate()
-
-    if frames:
-        with wave.open(OUTPUT_FILE, 'wb') as wf:
-            wf.setnchannels(CHANNELS)
-            wf.setsampwidth(p.get_sample_size(FORMAT))
-            wf.setframerate(RATE)
-            wf.writeframes(b''.join(frames))
-        print(f"[INFO] 录音保存为 {OUTPUT_FILE}")
-        send_audio_to_pc(OUTPUT_FILE)
-    else:
-        print("[INFO] 无有效录音，重新开始")
-
-
-def send_audio_to_pc(audio_file):
-    """将录音文件上传到服务器"""
-    if os.path.exists(audio_file):
+    def connect_to_server(self):
+        """连接到 PC 服务器"""
         try:
-            with open(audio_file, 'rb') as f:
-                sio.emit('audio_upload', {'filename': audio_file, 'content': f.read()})
-            print("[INFO] 录音文件已上传至服务器")
+            self.sio.connect(PC_SERVER_URL)
+            threading.Thread(target=self.send_heartbeat, daemon=True).start()
         except Exception as e:
-            print(f"[ERROR] 上传录音文件失败: {e}")
-    else:
-        print("[ERROR] 录音文件不存在")
+            logging.error(f"连接服务器失败: {e}")
 
+    def send_heartbeat(self):
+        """发送心跳包"""
+        while self.connected:
+            try:
+                # 获取系统状态
+                battery = self.get_battery_level()
+                temperature = self.get_cpu_temperature()
+                
+                self.sio.emit('heartbeat', {
+                    'status': 'active',
+                    'battery': battery,
+                    'temperature': temperature
+                })
+                logging.debug("已发送心跳包")
+            except Exception as e:
+                logging.error(f"发送心跳包失败: {e}")
+                break
+            time.sleep(HEARTBEAT_INTERVAL)
 
-def play_audio(audio_file):
-    """播放来自服务器的音频"""
-    if os.path.exists(audio_file):
+    def get_battery_level(self):
+        """获取电池电量"""
         try:
+            battery = psutil.sensors_battery()
+            return battery.percent if battery else 100
+        except:
+            return 100
+
+    def get_cpu_temperature(self):
+        """获取 CPU 温度"""
+        try:
+            temp = psutil.sensors_temperatures()
+            return temp['cpu_thermal'][0].current if 'cpu_thermal' in temp else 25
+        except:
+            return 25
+
+    def record_audio(self):
+        """录制音频"""
+        self.recording = True
+        frames = []
+        silence_count = 0
+        has_voice = False
+
+        try:
+            stream = self.audio.open(
+                format=FORMAT,
+                channels=CHANNELS,
+                rate=RATE,
+                input=True,
+                frames_per_buffer=CHUNK
+            )
+            
+            logging.info("开始录音")
+
+            while self.recording:
+                try:
+                    data = stream.read(CHUNK, exception_on_overflow=False)
+                    if self.vad.is_speech(data, RATE):
+                        frames.append(data)
+                        silence_count = 0
+                        has_voice = True
+                    else:
+                        silence_count += 1
+                        if has_voice:
+                            frames.append(data)
+
+                    if has_voice and silence_count > MAX_SILENCE_FRAMES:
+                        break
+
+                    if not has_voice and len(frames) > MAX_WAIT_FRAMES:
+                        break
+
+                except Exception as e:
+                    logging.error(f"录音过程中出错: {e}")
+                    break
+
+        finally:
+            stream.stop_stream()
+            stream.close()
+            self.recording = False
+
+        if frames and has_voice:
+            self.save_and_send_audio(frames)
+        else:
+            logging.info("未检测到有效语音")
+
+    def save_and_send_audio(self, frames):
+        """保存并发送音频"""
+        filename = os.path.join(RECORDING_PATH, f"recording_{int(time.time())}.wav")
+        
+        try:
+            with wave.open(filename, 'wb') as wf:
+                wf.setnchannels(CHANNELS)
+                wf.setsampwidth(self.audio.get_sample_size(FORMAT))
+                wf.setframerate(RATE)
+                wf.writeframes(b''.join(frames))
+
+            logging.info(f"音频已保存: {filename}")
+
+            # 发送音频文件
+            with open(filename, 'rb') as f:
+                audio_data = f.read()
+                self.sio.emit('audio_upload', {
+                    'filename': os.path.basename(filename),
+                    'content': audio_data
+                })
+            logging.info("音频文件已上传")
+
+        except Exception as e:
+            logging.error(f"保存或发送音频时出错: {e}")
+
+    def play_audio(self, audio_file):
+        """播放音频文件"""
+        try:
+            # 如果是网络路径，需要下载文件
+            if audio_file.startswith('http'):
+                # 这里需要实现下载逻辑
+                pass
+            
+            # 使用 pyaudio 播放音频
             wf = wave.open(audio_file, 'rb')
-            p = pyaudio.PyAudio()
-            stream = p.open(format=p.get_format_from_width(wf.getsampwidth()),
-                            channels=wf.getnchannels(),
-                            rate=wf.getframerate(),
-                            output=True)
+            stream = self.audio.open(
+                format=self.audio.get_format_from_width(wf.getsampwidth()),
+                channels=wf.getnchannels(),
+                rate=wf.getframerate(),
+                output=True
+            )
+
             data = wf.readframes(CHUNK)
             while data:
                 stream.write(data)
                 data = wf.readframes(CHUNK)
+
             stream.stop_stream()
             stream.close()
-            p.terminate()
+            wf.close()
+            
+            logging.info(f"音频播放完成: {audio_file}")
+            
         except Exception as e:
-            print(f"[ERROR] 播放音频文件失败: {e}")
-    else:
-        print("[ERROR] 音频文件不存在，无法播放")
+            logging.error(f"播放音频时出错: {e}")
 
-
-def send_heartbeat():
-    """定期发送心跳包"""
-    while True:
+    def execute_action(self, action):
+        """执行动作"""
         try:
-            sio.emit('heartbeat', {'status': 'active'})
-            print("[INFO] 心跳包已发送")
+            logging.info(f"执行动作: {action}")
+            
+            # 这里添加实际的动作执行代码
+            # 例如：调用 TonyPi 的动作控制接口
+            
+            # 模拟动作执行
+            time.sleep(2)
+            
+            # 发送动作完成状态
+            self.sio.emit('action_completed', {
+                'action': action,
+                'status': 'completed'
+            })
+            
+            logging.info(f"动作 {action} 执行完成")
+            
         except Exception as e:
-            print(f"[ERROR] 心跳包发送失败: {e}")
-            break
-        time.sleep(HEARTBEAT_INTERVAL)
+            logging.error(f"执行动作时出错: {e}")
+            self.sio.emit('action_completed', {
+                'action': action,
+                'status': 'failed',
+                'error': str(e)
+            })
 
+    def cleanup(self):
+        """清理资源"""
+        self.recording = False
+        if self.connected:
+            self.sio.disconnect()
+        self.audio.terminate()
 
-@sio.on('tts_audio')
-def handle_tts_audio(data):
-    """接收 TTS 音频文件并播放"""
-    audio_file = data.get('audio_file', 'response.wav')
+def main():
+    """主函数"""
+    robot = RobotClient()
+    
     try:
-        with open(audio_file, 'wb') as f:
-            f.write(data['content'])
-        print("[INFO] 已接收并保存 TTS 音频，准备播放...")
-        play_audio(audio_file)
-    except Exception as e:
-        print(f"[ERROR] 接收 TTS 音频失败: {e}")
-
-
-@sio.on('control_action')
-def handle_control_action(data):
-    """接收动作指令并执行"""
-    action = data.get("action")
-    if action:
-        print(f"[INFO] 接收到动作指令: {action}")
-        execute_action(action)
-        # 发送动作完成消息
-        sio.emit('action_response', {'status': 'done', 'action': action})
-    else:
-        print("[ERROR] 接收到无效的动作指令")
-
-
-def execute_action(action):
-    """执行机械人动作"""
-    print(f"[INFO] 执行动作: {action}")
-    time.sleep(2)  # 模拟动作时间
-    print(f"[INFO] 动作 {action} 执行完成")
-
-
-@sio.event
-def connect():
-    print("[INFO] 已连接到服务器")
-    # 启动心跳线程
-    threading.Thread(target=send_heartbeat, daemon=True).start()
-
-
-@sio.event
-def disconnect():
-    print("[INFO] 与服务器断开连接")
-
-
-if __name__ == '__main__':
-    try:
-        print("[INFO] 正在连接到服务器...")
-        sio.connect(SERVER_URL)
+        robot.connect_to_server()
+        
+        # 保持程序运行
         while True:
-            start_recording()
+            time.sleep(1)
+            
     except KeyboardInterrupt:
-        print("[INFO] 程序终止")
+        logging.info("程序被用户中断")
     except Exception as e:
-        print(f"[ERROR] 连接到服务器失败: {e}")
+        logging.error(f"程序出错: {e}")
+    finally:
+        robot.cleanup()
 
-if __name__ == '__main__':
-    server_ip = '0.0.0.0'  # 修改這裡，不要使用 get_local_ip()
-    print(f"服務器運行於 {server_ip}:5000")
-    socketio.run(app, 
-        host=server_ip, 
-        port=5000,
-        debug=True,
-        allow_unsafe_werkzeug=True  # 添加這個參數
-    )
+if __name__ == "__main__":
+    main()
