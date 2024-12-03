@@ -5,6 +5,12 @@ pip install pyaudio
 pip install webrtcvad
 pip install flask flask-socketio eventlet
 pip install flask-socketio
+pip install psutil
+pip install socketio-client pyaudio webrtcvad psutil
+
+
+python3 -m venv venv
+source venv/bin/activate
 
 pip install -r requirements.txt
 

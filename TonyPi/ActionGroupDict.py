@@ -30,5 +30,28 @@ action_group_dict = {
     '23': 'stand_slow',     #立正
     '24': 'stepping',       #原地踏步
     '25': 'jugong',         #鞠躬
-    '35': 'weightlifting'   #举重
+    '35': 'weightlifting',  #举重
+    # 新增測試動作
+    'heart': 'show_heart', #比心心
+    'dance': 'show_dance', #跳舞
+    'hello': 'show_hello' #打招呼
+}
+
+# 測試動作的 ASCII 藝術
+test_actions = {
+    'show_heart': '''
+ /\\/\\
+\\  //
+  \\/  
+''',
+    'show_dance': '''
+╯□╰
+(〜￣▽￣)〜
+〜(￣▽￣〜)
+''',
+    'show_hello': '''
+  (･ω･)ﾉ
+╭( ･ω･)ﾉ
+╭( ･ω･)╭
+'''
 }
