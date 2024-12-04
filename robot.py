@@ -153,21 +153,22 @@ class RobotClient:
         for key, value in ACTION_GROUP_DICT.items():
             print(f"動作 {key}: {value}")
 
-    def setup_socket_events(self):
+        def setup_socket_events(self):
         """設置 Socket.IO 事件處理"""
         @self.sio.on('connect')
         def on_connect():
             self.connected = True
-            self.reconnect_attempts = 0  # 重置重連計數
+            self.reconnect_attempts = 0
             logging.info("已連接到 PC 服務器")
             self.sio.emit('robot_connect', {'type': 'robot'})
+            print("成功連接到服務器，開始發送心跳...")
 
         @self.sio.on('disconnect')
         def on_disconnect():
             self.connected = False
             logging.info("與 PC 服務器斷開連接")
-            # 啟動重連監控
             threading.Thread(target=self.connection_monitor, daemon=True).start()
+
 
         @self.sio.on('start_recording')
         def on_start_recording():
@@ -212,19 +213,22 @@ class RobotClient:
         """發送心跳包"""
         while self.connected:
             try:
-                # 獲取系統狀態
                 battery = self.get_battery_level()
                 temperature = self.get_cpu_temperature()
                 
-                self.sio.emit('heartbeat', {
+                heartbeat_data = {
                     'status': 'active',
                     'battery': battery,
-                    'temperature': temperature
-                })
-                logging.debug("已發送心跳包")
+                    'temperature': temperature,
+                    'timestamp': time.time()
+                }
+                
+                self.sio.emit('heartbeat', heartbeat_data)
+                print("發送心跳包...")  # 添加這行來確認心跳正在發送
+                logging.info("已發送心跳包")
             except Exception as e:
                 logging.error(f"發送心跳包失敗: {e}")
-                if not self.connected:  # 如果連接已斷開，停止發送心跳
+                if not self.connected:
                     break
             time.sleep(HEARTBEAT_INTERVAL)
 
@@ -360,40 +364,32 @@ class RobotClient:
             logging.info(f"執行動作: {action} ({action_name})")
             print(f"\n[執行動作] {action_name}")
             
-            # 檢查動作是否存在於動作字典中
-            if str(action) in ACTION_GROUP_DICT:
-                if action == "heart":
-                    print(r" /\\/\\")
-                    print(r"\\  //")
-                    print(r"  \\/  ")
-                elif action == "dance":
-                    print("╯□╰")
-                    print("(〜￣▽￣)〜")
-                    print("〜(￣▽￣〜)")
-                elif action == "hello":
-                    print("  (･ω･)ﾉ")
-                    print("╭( ･ω･)ﾉ")
-                    print("╭( ･ω･)╭")
+            # 真實機器人動作執行
+            try:
+                # 導入 TonyPi 的控制模塊
+                from HiwonderSDK.Board import *
+                from HiwonderSDK.ActionGroupControl import *
                 
-                # 模擬動作執行時間
-                time.sleep(1)
+                # 初始化並執行動作
+                Board.setBusServoPulse(19, 500, 500)  # 示例：控制舵機
+                AGC = ActionGroupControl()  # 動作組控制
+                AGC.runActionGroup(action)   # 運行動作組
                 
-                # 播放提示音（如果有的話）
-                beep_file = "static/beep.wav"  # 假設有這個音效檔案
-                if os.path.exists(beep_file):
-                    self.play_audio(beep_file)
+                print(f"正在執行動作：{action_name}")
                 
-                # 發送動作完成狀態
-                if self.connected:
-                    self.sio.emit('action_completed', {
-                        'action': action,
-                        'name': action_name,
-                        'status': 'completed'
-                    })
-                
-                logging.info(f"動作 {action_name} 執行完成")
-            else:
-                raise ValueError(f"未知的動作: {action}")
+            except ImportError:
+                print("無法導入 HiwonderSDK，使用模擬模式")
+                time.sleep(1)  # 模擬動作執行時間
+            
+            # 發送完成狀態
+            if self.connected:
+                self.sio.emit('action_completed', {
+                    'action': action,
+                    'name': action_name,
+                    'status': 'completed'
+                })
+            
+            logging.info(f"動作 {action_name} 執行完成")
             
         except Exception as e:
             error_msg = f"執行動作時出錯: {e}"
@@ -401,7 +397,7 @@ class RobotClient:
             if self.connected:
                 self.sio.emit('action_completed', {
                     'action': action,
-                    'name': ACTION_GROUP_DICT.get(str(action), "未知動作"),
+                    'name': action_name,
                     'status': 'failed',
                     'error': error_msg
                 })
