@@ -153,7 +153,7 @@ class RobotClient:
         for key, value in ACTION_GROUP_DICT.items():
             print(f"動作 {key}: {value}")
 
-        def setup_socket_events(self):
+    def setup_socket_events(self):
         """設置 Socket.IO 事件處理"""
         @self.sio.on('connect')
         def on_connect():
@@ -168,7 +168,6 @@ class RobotClient:
             self.connected = False
             logging.info("與 PC 服務器斷開連接")
             threading.Thread(target=self.connection_monitor, daemon=True).start()
-
 
         @self.sio.on('start_recording')
         def on_start_recording():
@@ -224,7 +223,7 @@ class RobotClient:
                 }
                 
                 self.sio.emit('heartbeat', heartbeat_data)
-                print("發送心跳包...")  # 添加這行來確認心跳正在發送
+                print("發送心跳包...")
                 logging.info("已發送心跳包")
             except Exception as e:
                 logging.error(f"發送心跳包失敗: {e}")
@@ -311,8 +310,7 @@ class RobotClient:
 
             logging.info(f"音頻已保存: {filename}")
 
-            if self.connected:  # 只在連接狀態下發送
-                # 發送音頻文件
+            if self.connected:
                 with open(filename, 'rb') as f:
                     audio_data = f.read()
                     self.sio.emit('audio_upload', {
@@ -329,12 +327,6 @@ class RobotClient:
     def play_audio(self, audio_file):
         """播放音頻文件"""
         try:
-            # 如果是網絡路徑，需要下載文件
-            if audio_file.startswith('http'):
-                # 這裡需要實現下載邏輯
-                pass
-            
-            # 使用 pyaudio 播放音頻
             wf = wave.open(audio_file, 'rb')
             stream = self.audio.open(
                 format=self.audio.get_format_from_width(wf.getsampwidth()),
@@ -366,22 +358,18 @@ class RobotClient:
             
             # 真實機器人動作執行
             try:
-                # 導入 TonyPi 的控制模塊
                 from HiwonderSDK.Board import *
                 from HiwonderSDK.ActionGroupControl import *
                 
-                # 初始化並執行動作
                 Board.setBusServoPulse(19, 500, 500)  # 示例：控制舵機
-                AGC = ActionGroupControl()  # 動作組控制
-                AGC.runActionGroup(action)   # 運行動作組
-                
+                AGC = ActionGroupControl()
+                AGC.runActionGroup(action)
                 print(f"正在執行動作：{action_name}")
                 
             except ImportError:
                 print("無法導入 HiwonderSDK，使用模擬模式")
-                time.sleep(1)  # 模擬動作執行時間
+                time.sleep(1)
             
-            # 發送完成狀態
             if self.connected:
                 self.sio.emit('action_completed', {
                     'action': action,
