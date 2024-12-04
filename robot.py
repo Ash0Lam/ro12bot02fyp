@@ -63,7 +63,6 @@ except Exception as e:
         "4": "右轉",
         "9": "測試動作"
     }
-
 def validate_ip_and_port(ip_address):
     """驗證IP地址和端口格式"""
     pattern = r'^http://(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}):(\d{1,5})$'
@@ -139,7 +138,6 @@ class RobotClient:
         self.reconnect_attempts = 0
         self.max_reconnect_attempts = 5
         self.reconnect_delay = 5  # 重連延遲（秒）
-        self.setup_socket_events()
         
         # 初始化音頻設備
         self.vad = webrtcvad.Vad(2)  # 設置中等靈敏度
@@ -147,6 +145,21 @@ class RobotClient:
         
         # 確保錄音目錄存在
         os.makedirs(RECORDING_PATH, exist_ok=True)
+        
+        # 初始化機器人控制
+        try:
+            from HiwonderSDK.Board import *
+            from HiwonderSDK.ActionGroupControl import *
+            self.Board = Board
+            self.AGC = ActionGroupControl()
+            self.has_robot_sdk = True
+            print("[INFO] 成功初始化機器人控制模塊")
+        except ImportError:
+            self.has_robot_sdk = False
+            print("[WARNING] 無法載入機器人控制模塊，使用模擬模式")
+        
+        # 設置事件處理
+        self.setup_socket_events()
         
         # 打印可用動作列表
         print("\n可用的動作列表:")
@@ -186,7 +199,7 @@ class RobotClient:
         def on_execute_action(data):
             self.execute_action(data['action'])
 
-    def connection_monitor(self):
+def connection_monitor(self):
         """監控連接狀態"""
         while not self.connected and self.reconnect_attempts < self.max_reconnect_attempts:
             print(f"\n嘗試重新連接 ({self.reconnect_attempts + 1}/{self.max_reconnect_attempts})...")
@@ -234,6 +247,9 @@ class RobotClient:
     def get_battery_level(self):
         """獲取電池電量"""
         try:
+            if self.has_robot_sdk:
+                # 這裡可以添加實際獲取機器人電池電量的代碼
+                return self.Board.getBatteryVoltage() if hasattr(self.Board, 'getBatteryVoltage') else 100
             battery = psutil.sensors_battery()
             return battery.percent if battery else 100
         except:
@@ -242,12 +258,15 @@ class RobotClient:
     def get_cpu_temperature(self):
         """獲取 CPU 溫度"""
         try:
+            if self.has_robot_sdk:
+                # 這裡可以添加實際獲取機器人 CPU 溫度的代碼
+                return self.Board.getCPUTemperature() if hasattr(self.Board, 'getCPUTemperature') else 25
             temp = psutil.sensors_temperatures()
             return temp['cpu_thermal'][0].current if 'cpu_thermal' in temp else 25
         except:
             return 25
 
-    def record_audio(self):
+def record_audio(self):
         """錄製音頻"""
         self.recording = True
         frames = []
@@ -310,7 +329,8 @@ class RobotClient:
 
             logging.info(f"音頻已保存: {filename}")
 
-            if self.connected:
+            if self.connected:  # 只在連接狀態下發送
+                # 發送音頻文件
                 with open(filename, 'rb') as f:
                     audio_data = f.read()
                     self.sio.emit('audio_upload', {
@@ -324,9 +344,15 @@ class RobotClient:
         except Exception as e:
             logging.error(f"保存或發送音頻時出錯: {e}")
 
-    def play_audio(self, audio_file):
+def play_audio(self, audio_file):
         """播放音頻文件"""
         try:
+            # 如果是網絡路徑，需要下載文件
+            if audio_file.startswith('http'):
+                # 這裡需要實現下載邏輯
+                pass
+            
+            # 使用 pyaudio 播放音頻
             wf = wave.open(audio_file, 'rb')
             stream = self.audio.open(
                 format=self.audio.get_format_from_width(wf.getsampwidth()),
@@ -356,26 +382,28 @@ class RobotClient:
             logging.info(f"執行動作: {action} ({action_name})")
             print(f"\n[執行動作] {action_name}")
             
-            # 真實機器人動作執行
-            try:
-                from HiwonderSDK.Board import *
-                from HiwonderSDK.ActionGroupControl import *
-                
-                Board.setBusServoPulse(19, 500, 500)  # 示例：控制舵機
-                AGC = ActionGroupControl()
-                AGC.runActionGroup(action)
-                print(f"正在執行動作：{action_name}")
-                
-            except ImportError:
-                print("無法導入 HiwonderSDK，使用模擬模式")
+            if self.has_robot_sdk:
+                try:
+                    # 執行實際機器人動作
+                    print(f"正在執行實體機器人動作：{action_name}")
+                    self.AGC.runActionGroup(action)
+                    print("動作執行完成")
+                except Exception as e:
+                    print(f"執行實體機器人動作時出錯: {e}")
+                    raise
+            else:
+                # 模擬動作執行
+                print(f"模擬執行動作：{action_name}")
                 time.sleep(1)
             
+            # 發送動作完成狀態
             if self.connected:
                 self.sio.emit('action_completed', {
                     'action': action,
                     'name': action_name,
                     'status': 'completed'
                 })
+                print("動作完成狀態已發送")
             
             logging.info(f"動作 {action_name} 執行完成")
             
@@ -390,7 +418,7 @@ class RobotClient:
                     'error': error_msg
                 })
 
-    def cleanup(self):
+def cleanup(self):
         """清理資源"""
         print("\n正在關閉連接...")
         self.recording = False
