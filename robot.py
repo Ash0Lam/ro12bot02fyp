@@ -366,9 +366,8 @@ class RobotClient:
             
             # 真實機器人動作執行
             try:
-                # 導入 TonyPi 的控制模塊
-                from HiwonderSDK.Board import *
-                from HiwonderSDK.ActionGroupControl import *
+                from .HiwonderSDK.Board import Board
+                from .HiwonderSDK.ActionGroupControl import ActionGroupControl
                 
                 # 初始化並執行動作
                 Board.setBusServoPulse(19, 500, 500)  # 示例：控制舵機
@@ -416,3 +415,6 @@ class RobotClient:
 def main():
     """主函數"""
     robot = RobotClient()
+    
+    try:
+        if not robot.connect_to_server
