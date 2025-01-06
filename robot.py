@@ -181,7 +181,37 @@ class RobotClient:
 
         @self.sio.on('play_audio')
         def on_play_audio(data):
-            self.play_audio(data['file'])
+            """接收音频数据并播放"""
+            audio_file = data.get('file')
+            audio_data = data.get('audio_data')
+        
+            if audio_data:
+                # 如果接收到音频数据，则直接播放它
+                self.play_audio_from_data(audio_data)
+            elif audio_file:
+                # 如果是文件路径，直接从文件播放
+                self.play_audio(audio_file)
+        
+        def play_audio_from_data(self, audio_data):
+            """从音频数据播放音频"""
+            try:
+                # 使用 pyaudio 播放二进制音频数据
+                stream = self.audio.open(
+                    format=pyaudio.paInt16,
+                    channels=1,
+                    rate=16000,
+                    output=True
+                )
+        
+                # 播放音频数据
+                stream.write(audio_data)
+                stream.stop_stream()
+                stream.close()
+        
+                logging.info("音频播放完成")
+            except Exception as e:
+                logging.error(f"播放音频时出错: {e}")
+
 
         @self.sio.on('execute_action')
         def on_execute_action(data):
