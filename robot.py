@@ -260,7 +260,7 @@ class RobotClient:
             cap.set(cv2.CAP_PROP_FPS, 10)
             
             frame_count = 0
-            log_interval = 10
+            log_interval = 100
             error_count = 0
             max_consecutive_errors = 5
     
