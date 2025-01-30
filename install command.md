@@ -7,6 +7,7 @@ pip install flask flask-socketio eventlet
 pip install flask-socketio
 pip install psutil
 pip install socketio-client pyaudio webrtcvad psutil
+pip install opencv-python
 
 
 python3 -m venv venv

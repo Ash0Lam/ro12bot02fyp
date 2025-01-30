@@ -142,6 +142,7 @@ class RobotClient:
         self.max_reconnect_attempts = 5
         self.reconnect_delay = 5  # 重連延遲（秒）
         self.setup_socket_events()
+        self.camera_running = False
         
         # 初始化音頻設備
         self.vad = webrtcvad.Vad(2)  # 設置中等靈敏度
@@ -171,7 +172,6 @@ class RobotClient:
             logging.info("與 PC 服務器斷開連接")
             threading.Thread(target=self.connection_monitor, daemon=True).start()
 
-
         @self.sio.on('start_recording')
         def on_start_recording():
             if not self.recording:
@@ -189,7 +189,28 @@ class RobotClient:
             """停止攝像頭串流"""
             self.camera_running = False
 
-            def stream_camera(self):
+        @self.sio.on('stop_recording')
+        def on_stop_recording():
+            self.recording = False
+
+        @self.sio.on('play_audio')
+        def on_play_audio(data):
+            """接收音频数据并播放"""
+            audio_file = data.get('file')
+            audio_data = data.get('audio_data')
+        
+            if audio_data:
+                # 如果接收到音频数据，则直接播放它
+                self.play_audio_from_data(audio_data)
+            elif audio_file:
+                # 如果是文件路径，直接从文件播放
+                self.play_audio(audio_file)
+
+        @self.sio.on('execute_action')
+        def on_execute_action(data):
+            self.execute_action(data['action'])
+
+    def stream_camera(self):
         """開啟攝像頭並串流影像到 PC"""
         cap = cv2.VideoCapture(0)  # 0 表示默認攝像頭
         cap.set(3, 640)  # 設定解析度為 640x480
@@ -213,47 +234,25 @@ class RobotClient:
         cap.release()
         print("攝像頭已關閉")
 
-        @self.sio.on('stop_recording')
-        def on_stop_recording():
-            self.recording = False
-
-        @self.sio.on('play_audio')
-        def on_play_audio(data):
-            """接收音频数据并播放"""
-            audio_file = data.get('file')
-            audio_data = data.get('audio_data')
-        
-            if audio_data:
-                # 如果接收到音频数据，则直接播放它
-                self.play_audio_from_data(audio_data)
-            elif audio_file:
-                # 如果是文件路径，直接从文件播放
-                self.play_audio(audio_file)
-        
-        def play_audio_from_data(self, audio_data):
-            """从音频数据播放音频"""
-            try:
-                # 使用 pyaudio 播放二进制音频数据
-                stream = self.audio.open(
-                    format=pyaudio.paInt16,
-                    channels=1,
-                    rate=16000,
-                    output=True
-                )
-        
-                # 播放音频数据
-                stream.write(audio_data)
-                stream.stop_stream()
-                stream.close()
-        
-                logging.info("音频播放完成")
-            except Exception as e:
-                logging.error(f"播放音频时出错: {e}")
-
-
-        @self.sio.on('execute_action')
-        def on_execute_action(data):
-            self.execute_action(data['action'])
+    def play_audio_from_data(self, audio_data):
+        """从音频数据播放音频"""
+        try:
+            # 使用 pyaudio 播放二进制音频数据
+            stream = self.audio.open(
+                format=pyaudio.paInt16,
+                channels=1,
+                rate=16000,
+                output=True
+            )
+    
+            # 播放音频数据
+            stream.write(audio_data)
+            stream.stop_stream()
+            stream.close()
+    
+            logging.info("音频播放完成")
+        except Exception as e:
+            logging.error(f"播放音频时出错: {e}")
 
     def connection_monitor(self):
         """監控連接狀態"""
@@ -485,4 +484,22 @@ def main():
     robot = RobotClient()
     
     try:
-        if not robot.connect_to_server
+        if not robot.connect_to_server():
+            print("無法連接到服務器，程序將退出")
+            return
+
+        # 保持主線程運行，直到用戶中斷
+        try:
+            while robot.connected:
+                time.sleep(1)
+        except KeyboardInterrupt:
+            print("\n收到中斷信號，正在關閉...")
+
+    except Exception as e:
+        print(f"發生未預期的錯誤: {e}")
+    
+    finally:
+        robot.cleanup()
+
+if __name__ == "__main__":
+    main()
