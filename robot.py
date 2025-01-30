@@ -210,29 +210,170 @@ class RobotClient:
         def on_execute_action(data):
             self.execute_action(data['action'])
 
-    def stream_camera(self):
-        """開啟攝像頭並串流影像到 PC"""
-        cap = cv2.VideoCapture(0)  # 0 表示默認攝像頭
-        cap.set(3, 640)  # 設定解析度為 640x480
-        cap.set(4, 480)
-        cap.set(cv2.CAP_PROP_FPS, 10)  # 設定 FPS 為 10
-
-        while self.camera_running and cap.isOpened():
+    def find_camera_device():
+    """
+    跨平台的攝像頭設備探測
+    返回第一個可用的攝像頭索引
+    """
+    import cv2
+    
+    # 常見的攝像頭索引
+    camera_indices = [0, 1, -1]
+    
+    for index in camera_indices:
+        try:
+            cap = cv2.VideoCapture(index)
+            
+            # 檢查攝像頭是否成功開啟
+            if not cap.isOpened():
+                print(f"[DEBUG] 設備 {index} 無法開啟")
+                continue
+            
+            # 嘗試讀取一幀
             ret, frame = cap.read()
-            if not ret:
-                break
+            
+            if ret and frame is not None and frame.size > 0:
+                print(f"[INFO] 成功找到攝像頭：設備 {index}")
+                cap.release()
+                return index
+            
+            cap.release()
+        except Exception as e:
+            print(f"[DEBUG] 嘗試設備 {index} 失敗: {e}")
+    
+    return None
 
-            # 影像壓縮成 JPEG 格式
-            _, buffer = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), 50])
-            jpg_as_text = base64.b64encode(buffer).decode('utf-8')
-
-            # 傳輸影像到 PC
-            self.sio.emit('camera_stream', {'image': jpg_as_text})
-
-            time.sleep(0.1)  # 降低頻率，減少 CPU 負擔
+    def diagnose_camera():
+        """
+        跨平台的攝像頭診斷函數
+        輸出詳細的診斷信息
+        """
+        import platform
+        import sys
         
-        cap.release()
-        print("攝像頭已關閉")
+        print("🔍 攝像頭診斷報告:")
+        print(f"作業系統: {platform.system()} {platform.release()}")
+        print(f"Python 版本: {sys.version}")
+        
+        try:
+            import cv2
+            print(f"OpenCV 版本: {cv2.__version__}")
+            
+            # 列出可用攝像頭
+            devices = []
+            for i in range(10):
+                cap = cv2.VideoCapture(i)
+                if cap.isOpened():
+                    devices.append(i)
+                    cap.release()
+            
+            print(f"可用攝像頭設備: {devices}")
+        
+        except ImportError:
+            print("[ERROR] OpenCV 未安裝")
+
+    def stream_camera(self):
+        """
+        跨平台的攝像頭串流方法
+        增加錯誤處理和設備檢測
+        """
+        # 診斷攝像頭
+        diagnose_camera()
+        
+        # 查找可用的攝像頭
+        camera_index = find_camera_device()
+        
+        if camera_index is None:
+            print("[ERROR] 未找到可用的攝像頭")
+            
+            # 向前端發送詳細的錯誤信息
+            error_details = {
+                'code': 'NO_CAMERA',
+                'message': '未檢測到可用攝像頭',
+                'suggestions': [
+                    '請確認攝像頭已正確連接',
+                    '檢查攝像頭驅動是否安裝',
+                    '嘗試重新連接攝像頭'
+                ]
+            }
+            
+            # 發送錯誤到前端
+            try:
+                self.sio.emit('camera_error', error_details)
+            except Exception as emit_error:
+                print(f"[ERROR] 發送攝像頭錯誤信息失敗: {emit_error}")
+            
+            return
+    
+        try:
+            cap = cv2.VideoCapture(camera_index)
+            
+            # 通用的攝像頭設置
+            cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+            cap.set(cv2.CAP_PROP_FPS, 10)
+            
+            frame_count = 0
+            error_count = 0
+            max_consecutive_errors = 5
+    
+            while self.camera_running:
+                try:
+                    ret, frame = cap.read()
+                    
+                    if not ret or frame is None:
+                        error_count += 1
+                        print(f"[WARNING] 無法讀取畫面，錯誤次數: {error_count}")
+                        
+                        if error_count >= max_consecutive_errors:
+                            print("[ERROR] 連續多次無法讀取畫面，停止串流")
+                            break
+                        
+                        time.sleep(0.5)  # 短暫等待後重試
+                        continue
+                    
+                    # 重置錯誤計數
+                    error_count = 0
+                    
+                    # 影像壓縮成 JPEG 格式
+                    _, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 50])
+                    jpg_as_text = base64.b64encode(buffer).decode('utf-8')
+    
+                    # 傳輸影像到 PC
+                    self.sio.emit('camera_stream', {'image': jpg_as_text})
+    
+                    frame_count += 1
+                    if frame_count % 100 == 0:
+                        print(f"[INFO] 已串流 {frame_count} 幀")
+    
+                    time.sleep(0.1)  # 控制幀率
+    
+                except Exception as frame_error:
+                    print(f"[ERROR] 串流幀時出錯: {frame_error}")
+                    break
+    
+        except Exception as e:
+            print(f"[ERROR] 攝像頭串流異常: {e}")
+            
+            # 向前端發送詳細的錯誤信息
+            error_details = {
+                'code': 'STREAM_ERROR',
+                'message': str(e),
+                'suggestions': [
+                    '重新啟動攝像頭串流',
+                    '檢查系統攝像頭權限',
+                    '確認攝像頭是否被其他應用佔用'
+                ]
+            }
+            
+            try:
+                self.sio.emit('camera_error', error_details)
+            except Exception as emit_error:
+                print(f"[ERROR] 發送攝像頭錯誤信息失敗: {emit_error}")
+        
+        finally:
+            cap.release()
+            print("攝像頭串流結束")
 
     def play_audio_from_data(self, audio_data):
         """从音频数据播放音频"""
