@@ -260,6 +260,7 @@ class RobotClient:
             cap.set(cv2.CAP_PROP_FPS, 10)
             
             frame_count = 0
+            log_interval = 100
             error_count = 0
             max_consecutive_errors = 5
     
@@ -289,8 +290,8 @@ class RobotClient:
                     self.sio.emit('camera_stream', {'image': jpg_as_text})
     
                     frame_count += 1
-                    if frame_count % 100 == 0:
-                        print(f"[INFO] 已串流 {frame_count} 幀")
+                    if frame_count % log_interval == 0:
+                        print(f"[DEBUG] 已傳輸 {frame_count} 幀")
     
                     time.sleep(0.1)  # 控制幀率
     
