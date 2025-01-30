@@ -155,41 +155,41 @@ class RobotClient:
         print("\n可用的動作列表:")
         for key, value in ACTION_GROUP_DICT.items():
             print(f"動作 {key}: {value}")
-            
-    def find_camera_device():
-    """
-    跨平台的攝像頭設備探測
-    返回第一個可用的攝像頭索引
-    """
-    import cv2
-    
-    # 常見的攝像頭索引
-    camera_indices = [0, 1, -1]
-    
-    for index in camera_indices:
-        try:
-            cap = cv2.VideoCapture(index)
-            
-            # 檢查攝像頭是否成功開啟
-            if not cap.isOpened():
-                print(f"[DEBUG] 設備 {index} 無法開啟")
-                continue
-            
-            # 嘗試讀取一幀
-            ret, frame = cap.read()
-            
-            if ret and frame is not None and frame.size > 0:
-                print(f"[INFO] 成功找到攝像頭：設備 {index}")
-                cap.release()
-                return index
-            
-            cap.release()
-        except Exception as e:
-            print(f"[DEBUG] 嘗試設備 {index} 失敗: {e}")
-    
-    return None
 
-    def diagnose_camera():
+    def find_camera_device(self):
+        """
+        跨平台的攝像頭設備探測
+        返回第一個可用的攝像頭索引
+        """
+        import cv2
+        
+        # 常見的攝像頭索引
+        camera_indices = [0, 1, -1]
+        
+        for index in camera_indices:
+            try:
+                cap = cv2.VideoCapture(index)
+                
+                # 檢查攝像頭是否成功開啟
+                if not cap.isOpened():
+                    print(f"[DEBUG] 設備 {index} 無法開啟")
+                    continue
+                
+                # 嘗試讀取一幀
+                ret, frame = cap.read()
+                
+                if ret and frame is not None and frame.size > 0:
+                    print(f"[INFO] 成功找到攝像頭：設備 {index}")
+                    cap.release()
+                    return index
+                
+                cap.release()
+            except Exception as e:
+                print(f"[DEBUG] 嘗試設備 {index} 失敗: {e}")
+        
+        return None
+
+    def diagnose_camera(self):
         """
         跨平台的攝像頭診斷函數
         輸出詳細的診斷信息
@@ -224,10 +224,10 @@ class RobotClient:
         增加錯誤處理和設備檢測
         """
         # 診斷攝像頭
-        diagnose_camera()
+        self.diagnose_camera()
         
         # 查找可用的攝像頭
-        camera_index = find_camera_device()
+        camera_index = self.find_camera_device()
         
         if camera_index is None:
             print("[ERROR] 未找到可用的攝像頭")
@@ -320,7 +320,7 @@ class RobotClient:
         finally:
             cap.release()
             print("攝像頭串流結束")
-
+            
     def setup_socket_events(self):
         """設置 Socket.IO 事件處理"""
         @self.sio.on('connect')
@@ -375,7 +375,8 @@ class RobotClient:
         def on_execute_action(data):
             self.execute_action(data['action'])
 
-    
+ 
+
     def play_audio_from_data(self, audio_data):
         """从音频数据播放音频"""
         try:
