@@ -8,6 +8,8 @@ import threading
 import psutil
 import logging
 import re
+import cv2
+import base64
 from flask import Flask
 from flask_socketio import SocketIO, emit
 import importlib.util
@@ -174,6 +176,42 @@ class RobotClient:
         def on_start_recording():
             if not self.recording:
                 threading.Thread(target=self.record_audio).start()
+
+        @self.sio.on('start_camera')
+        def on_start_camera():
+            """開始攝像頭串流"""
+            if not self.camera_running:
+                self.camera_running = True
+                threading.Thread(target=self.stream_camera, daemon=True).start()
+
+        @self.sio.on('stop_camera')
+        def on_stop_camera():
+            """停止攝像頭串流"""
+            self.camera_running = False
+
+            def stream_camera(self):
+        """開啟攝像頭並串流影像到 PC"""
+        cap = cv2.VideoCapture(0)  # 0 表示默認攝像頭
+        cap.set(3, 640)  # 設定解析度為 640x480
+        cap.set(4, 480)
+        cap.set(cv2.CAP_PROP_FPS, 10)  # 設定 FPS 為 10
+
+        while self.camera_running and cap.isOpened():
+            ret, frame = cap.read()
+            if not ret:
+                break
+
+            # 影像壓縮成 JPEG 格式
+            _, buffer = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), 50])
+            jpg_as_text = base64.b64encode(buffer).decode('utf-8')
+
+            # 傳輸影像到 PC
+            self.sio.emit('camera_stream', {'image': jpg_as_text})
+
+            time.sleep(0.1)  # 降低頻率，減少 CPU 負擔
+        
+        cap.release()
+        print("攝像頭已關閉")
 
         @self.sio.on('stop_recording')
         def on_stop_recording():
