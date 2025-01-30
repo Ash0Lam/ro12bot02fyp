@@ -155,61 +155,7 @@ class RobotClient:
         print("\n可用的動作列表:")
         for key, value in ACTION_GROUP_DICT.items():
             print(f"動作 {key}: {value}")
-
-    def setup_socket_events(self):
-        """設置 Socket.IO 事件處理"""
-        @self.sio.on('connect')
-        def on_connect():
-            self.connected = True
-            self.reconnect_attempts = 0
-            logging.info("已連接到 PC 服務器")
-            self.sio.emit('robot_connect', {'type': 'robot'})
-            print("成功連接到服務器，開始發送心跳...")
-
-        @self.sio.on('disconnect')
-        def on_disconnect():
-            self.connected = False
-            logging.info("與 PC 服務器斷開連接")
-            threading.Thread(target=self.connection_monitor, daemon=True).start()
-
-        @self.sio.on('start_recording')
-        def on_start_recording():
-            if not self.recording:
-                threading.Thread(target=self.record_audio).start()
-
-        @self.sio.on('start_camera')
-        def on_start_camera():
-            """開始攝像頭串流"""
-            if not self.camera_running:
-                self.camera_running = True
-                threading.Thread(target=self.stream_camera, daemon=True).start()
-
-        @self.sio.on('stop_camera')
-        def on_stop_camera():
-            """停止攝像頭串流"""
-            self.camera_running = False
-
-        @self.sio.on('stop_recording')
-        def on_stop_recording():
-            self.recording = False
-
-        @self.sio.on('play_audio')
-        def on_play_audio(data):
-            """接收音频数据并播放"""
-            audio_file = data.get('file')
-            audio_data = data.get('audio_data')
-        
-            if audio_data:
-                # 如果接收到音频数据，则直接播放它
-                self.play_audio_from_data(audio_data)
-            elif audio_file:
-                # 如果是文件路径，直接从文件播放
-                self.play_audio(audio_file)
-
-        @self.sio.on('execute_action')
-        def on_execute_action(data):
-            self.execute_action(data['action'])
-
+            
     def find_camera_device():
     """
     跨平台的攝像頭設備探測
@@ -375,6 +321,61 @@ class RobotClient:
             cap.release()
             print("攝像頭串流結束")
 
+    def setup_socket_events(self):
+        """設置 Socket.IO 事件處理"""
+        @self.sio.on('connect')
+        def on_connect():
+            self.connected = True
+            self.reconnect_attempts = 0
+            logging.info("已連接到 PC 服務器")
+            self.sio.emit('robot_connect', {'type': 'robot'})
+            print("成功連接到服務器，開始發送心跳...")
+
+        @self.sio.on('disconnect')
+        def on_disconnect():
+            self.connected = False
+            logging.info("與 PC 服務器斷開連接")
+            threading.Thread(target=self.connection_monitor, daemon=True).start()
+
+        @self.sio.on('start_recording')
+        def on_start_recording():
+            if not self.recording:
+                threading.Thread(target=self.record_audio).start()
+
+        @self.sio.on('start_camera')
+        def on_start_camera():
+            """開始攝像頭串流"""
+            if not self.camera_running:
+                self.camera_running = True
+                threading.Thread(target=self.stream_camera, daemon=True).start()
+
+        @self.sio.on('stop_camera')
+        def on_stop_camera():
+            """停止攝像頭串流"""
+            self.camera_running = False
+
+        @self.sio.on('stop_recording')
+        def on_stop_recording():
+            self.recording = False
+
+        @self.sio.on('play_audio')
+        def on_play_audio(data):
+            """接收音频数据并播放"""
+            audio_file = data.get('file')
+            audio_data = data.get('audio_data')
+        
+            if audio_data:
+                # 如果接收到音频数据，则直接播放它
+                self.play_audio_from_data(audio_data)
+            elif audio_file:
+                # 如果是文件路径，直接从文件播放
+                self.play_audio(audio_file)
+
+        @self.sio.on('execute_action')
+        def on_execute_action(data):
+            self.execute_action(data['action'])
+
+    
     def play_audio_from_data(self, audio_data):
         """从音频数据播放音频"""
         try:
