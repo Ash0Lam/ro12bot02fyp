@@ -1,7 +1,28 @@
 #!/bin/bash
 
-# 🚀 跨平台 Python 依賴與系統依賴安裝腳本
+# 🚀 跨平台 Python 依賴與系統依賴安裝腳本（包含虛擬環境）
 # 兼容：Ubuntu/Debian, Raspberry Pi, macOS
+
+# 設定虛擬環境名稱
+VENV_DIR="venv"
+
+# 創建並啟動虛擬環境
+setup_venv() {
+    echo "🐍 設置虛擬環境 (${VENV_DIR})..."
+    
+    # 如果虛擬環境不存在，則創建
+    if [ ! -d "$VENV_DIR" ]; then
+        python3 -m venv "$VENV_DIR"
+        echo "✅ 虛擬環境已創建"
+    fi
+
+    # 啟動虛擬環境
+    source "$VENV_DIR/bin/activate"
+    echo "✅ 虛擬環境已啟動"
+
+    # 確保 `pip` 是最新版本
+    pip install --upgrade pip setuptools wheel
+}
 
 install_debian_dependencies() {
     echo "🔄 更新 Debian/Ubuntu 套件庫..."
@@ -12,9 +33,8 @@ install_debian_dependencies() {
         libasound-dev portaudio19-dev libportaudio2 libportaudiocpp0 ffmpeg \
         libgl1-mesa-glx python3-pyaudio
 
-    echo "🐍 升級 Python 環境..."
-    pip install --upgrade pip setuptools wheel
-
+    # 啟動虛擬環境並安裝 Python 依賴
+    setup_venv
     echo "📌 安裝 Python 依賴（來自 requirements.txt）..."
     pip install --no-cache-dir -r requirements.txt
 }
@@ -30,11 +50,10 @@ install_macos_dependencies() {
     echo "📦 安裝 macOS 依賴..."
     brew install opencv portaudio ffmpeg v4l-utils
 
-    echo "🐍 升級 Python 環境..."
-    pip install --upgrade pip setuptools wheel
-
+    # 啟動虛擬環境並安裝 Python 依賴
+    setup_venv
     echo "📌 安裝 Python 依賴（來自 requirements.txt）..."
-    pip3 install --no-cache-dir -r requirements.txt
+    pip install --no-cache-dir -r requirements.txt
 }
 
 install_raspberry_dependencies() {
@@ -44,11 +63,10 @@ install_raspberry_dependencies() {
         python3-opencv libopencv-dev v4l-utils python3-pip \
         libasound-dev portaudio19-dev libportaudiocpp0 ffmpeg
     
-    echo "🐍 升級 Python 環境..."
-    pip install --upgrade pip setuptools wheel
-
+    # 啟動虛擬環境並安裝 Python 依賴
+    setup_venv
     echo "📌 安裝 Python 依賴（來自 requirements.txt）..."
-    pip3 install --no-cache-dir -r requirements.txt
+    pip install --no-cache-dir -r requirements.txt
 }
 
 main() {
