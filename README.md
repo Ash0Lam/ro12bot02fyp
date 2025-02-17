@@ -2,6 +2,8 @@
 
 ## 📌 Introduction
 
+> 🔗 **Server Side Repository**: [vtcfypA05](https://github.com/Ash0Lam/vtcfypA05)
+
 This project is the **robot-side** of the **Intelligent Robot Control System**. It runs on the **robot hardware**, executing commands received from the **[server-side (vtcfypA05)](https://github.com/Ash0Lam/vtcfypA05)**.
 
 ## 📂 Project Structure
