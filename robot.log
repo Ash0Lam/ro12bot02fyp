@@ -1,2 +1,0 @@
-2025-02-17 04:00:46,348 [ERROR] requests package is not installed -- cannot send HTTP requests!
-2025-02-17 04:00:47,349 [ERROR] 連接服務器失敗: One or more namespaces failed to connect
