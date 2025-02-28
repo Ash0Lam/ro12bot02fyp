@@ -1,6 +1,6 @@
 import socketio
 import wave
-import pyaudio
+# import pyaudio
 import webrtcvad
 import os
 import time
@@ -125,7 +125,8 @@ ROBOT_SERVER_PORT = 6000            # 機器人服務器端口
 
 # 錄音參數
 CHUNK = 320
-FORMAT = pyaudio.paInt16
+# FORMAT = pyaudio.paInt16
+FORMAT = 8  # 使用常數替代 pyaudio.paInt16
 CHANNELS = 1
 RATE = 16000
 MAX_SILENCE_FRAMES = int(RATE / CHUNK * 3)  # 3 秒靜音停止錄音
@@ -146,7 +147,8 @@ class RobotClient:
         
         # 初始化音頻設備
         self.vad = webrtcvad.Vad(2)  # 設置中等靈敏度
-        self.audio = pyaudio.PyAudio()
+        # self.audio = pyaudio.PyAudio()
+        self.audio = None  # 注释掉 PyAudio 初始化
         
         # 確保錄音目錄存在
         os.makedirs(RECORDING_PATH, exist_ok=True)
@@ -376,27 +378,29 @@ class RobotClient:
         def on_execute_action(data):
             self.execute_action(data['action'])
 
- 
-
     def play_audio_from_data(self, audio_data):
         """从音频数据播放音频"""
         try:
-            # 使用 pyaudio 播放二进制音频数据
-            stream = self.audio.open(
-                format=pyaudio.paInt16,
-                channels=1,
-                rate=16000,
-                output=True
-            )
-    
-            # 播放音频数据
-            stream.write(audio_data)
-            stream.stop_stream()
-            stream.close()
-    
-            logging.info("音频播放完成")
+            # PyAudio相关代码已注释
+            print("[INFO] PyAudio 已禁用，無法播放音頻")
+            logging.info("音頻播放功能已禁用 (PyAudio)")
+            
+            # # 使用 pyaudio 播放二进制音频数据
+            # stream = self.audio.open(
+            #     format=pyaudio.paInt16,
+            #     channels=1,
+            #     rate=16000,
+            #     output=True
+            # )
+            # 
+            # # 播放音频数据
+            # stream.write(audio_data)
+            # stream.stop_stream()
+            # stream.close()
+            # 
+            # logging.info("音频播放完成")
         except Exception as e:
-            logging.error(f"播放音频时出错: {e}")
+            logging.error(f"播放音頻時出錯: {e}")
 
     def connection_monitor(self):
         """監控連接狀態"""
@@ -461,53 +465,59 @@ class RobotClient:
 
     def record_audio(self):
         """錄製音頻"""
-        self.recording = True
-        frames = []
-        silence_count = 0
-        has_voice = False
-
-        try:
-            stream = self.audio.open(
-                format=FORMAT,
-                channels=CHANNELS,
-                rate=RATE,
-                input=True,
-                frames_per_buffer=CHUNK
-            )
-            
-            logging.info("開始錄音")
-
-            while self.recording:
-                try:
-                    data = stream.read(CHUNK, exception_on_overflow=False)
-                    if self.vad.is_speech(data, RATE):
-                        frames.append(data)
-                        silence_count = 0
-                        has_voice = True
-                    else:
-                        silence_count += 1
-                        if has_voice:
-                            frames.append(data)
-
-                    if has_voice and silence_count > MAX_SILENCE_FRAMES:
-                        break
-
-                    if not has_voice and len(frames) > MAX_WAIT_FRAMES:
-                        break
-
-                except Exception as e:
-                    logging.error(f"錄音過程中出錯: {e}")
-                    break
-
-        finally:
-            stream.stop_stream()
-            stream.close()
-            self.recording = False
-
-        if frames and has_voice:
-            self.save_and_send_audio(frames)
-        else:
-            logging.info("未檢測到有效語音")
+        print("[INFO] PyAudio 已禁用，無法錄音")
+        logging.info("錄音功能已禁用 (PyAudio)")
+        self.recording = False
+        return
+        
+        # 以下代码已被注释
+        # self.recording = True
+        # frames = []
+        # silence_count = 0
+        # has_voice = False
+        # 
+        # try:
+        #     stream = self.audio.open(
+        #         format=FORMAT,
+        #         channels=CHANNELS,
+        #         rate=RATE,
+        #         input=True,
+        #         frames_per_buffer=CHUNK
+        #     )
+        #     
+        #     logging.info("開始錄音")
+        # 
+        #     while self.recording:
+        #         try:
+        #             data = stream.read(CHUNK, exception_on_overflow=False)
+        #             if self.vad.is_speech(data, RATE):
+        #                 frames.append(data)
+        #                 silence_count = 0
+        #                 has_voice = True
+        #             else:
+        #                 silence_count += 1
+        #                 if has_voice:
+        #                     frames.append(data)
+        # 
+        #             if has_voice and silence_count > MAX_SILENCE_FRAMES:
+        #                 break
+        # 
+        #             if not has_voice and len(frames) > MAX_WAIT_FRAMES:
+        #                 break
+        # 
+        #         except Exception as e:
+        #             logging.error(f"錄音過程中出錯: {e}")
+        #             break
+        # 
+        # finally:
+        #     stream.stop_stream()
+        #     stream.close()
+        #     self.recording = False
+        # 
+        # if frames and has_voice:
+        #     self.save_and_send_audio(frames)
+        # else:
+        #     logging.info("未檢測到有效語音")
 
     def save_and_send_audio(self, frames):
         """保存並發送音頻"""
@@ -516,7 +526,9 @@ class RobotClient:
         try:
             with wave.open(filename, 'wb') as wf:
                 wf.setnchannels(CHANNELS)
-                wf.setsampwidth(self.audio.get_sample_size(FORMAT))
+                # 以下代码已注释
+                # wf.setsampwidth(self.audio.get_sample_size(FORMAT))
+                wf.setsampwidth(2)  # 假设FORMAT是16位(2字节)
                 wf.setframerate(RATE)
                 wf.writeframes(b''.join(frames))
 
@@ -540,30 +552,34 @@ class RobotClient:
     def play_audio(self, audio_file):
         """播放音頻文件"""
         try:
-            # 如果是網絡路徑，需要下載文件
-            if audio_file.startswith('http'):
-                # 這裡需要實現下載邏輯
-                pass
+            print("[INFO] PyAudio 已禁用，無法播放音頻文件")
+            logging.info("音頻文件播放功能已禁用 (PyAudio)")
             
-            # 使用 pyaudio 播放音頻
-            wf = wave.open(audio_file, 'rb')
-            stream = self.audio.open(
-                format=self.audio.get_format_from_width(wf.getsampwidth()),
-                channels=wf.getnchannels(),
-                rate=wf.getframerate(),
-                output=True
-            )
-
-            data = wf.readframes(CHUNK)
-            while data:
-                stream.write(data)
-                data = wf.readframes(CHUNK)
-
-            stream.stop_stream()
-            stream.close()
-            wf.close()
-            
-            logging.info(f"音頻播放完成: {audio_file}")
+            # 以下代码已注释
+            # # 如果是網絡路徑，需要下載文件
+            # if audio_file.startswith('http'):
+            #     # 這裡需要實現下載邏輯
+            #     pass
+            # 
+            # # 使用 pyaudio 播放音頻
+            # wf = wave.open(audio_file, 'rb')
+            # stream = self.audio.open(
+            #     format=self.audio.get_format_from_width(wf.getsampwidth()),
+            #     channels=wf.getnchannels(),
+            #     rate=wf.getframerate(),
+            #     output=True
+            # )
+            # 
+            # data = wf.readframes(CHUNK)
+            # while data:
+            #     stream.write(data)
+            #     data = wf.readframes(CHUNK)
+            # 
+            # stream.stop_stream()
+            # stream.close()
+            # wf.close()
+            # 
+            # logging.info(f"音頻播放完成: {audio_file}")
             
         except Exception as e:
             logging.error(f"播放音頻時出錯: {e}")
@@ -621,7 +637,8 @@ class RobotClient:
                 self.sio.disconnect()
             except:
                 pass
-        self.audio.terminate()
+        # 以下代码已注释
+        # self.audio.terminate()
 
 def main():
     """主函數"""
